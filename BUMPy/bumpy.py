@@ -4,6 +4,7 @@
     version 1.1.0
 '''
 
+
 import inspect
 import sys
 import os
@@ -741,6 +742,7 @@ class shapes:
         def gen_shape(template_bilayer, zo, x_dimension, y_dimension, r_hole=0, cutoff_method='com',
                       print_intermediates=False):
             slice_origin = template_bilayer.gen_slicepoint()
+            print ('Origin of the flat_bilayer is {},{}'.format(*slice_origin))
             flat_slice  = template_bilayer.slice_pdb(template_bilayer.rectangular_slice(
                                                      [slice_origin[0], slice_origin[0] + x_dimension],
                                                      [slice_origin[1], slice_origin[1] + y_dimension],
@@ -748,7 +750,7 @@ class shapes:
             flat_slice.center_on_zero()
 
             if print_intermediates:
-                flat_slice.write_coordinates(print_intermediates, position=False)
+                flat_slice.write_coordinates('flat_bilayer.pdb', position=False)
             return flat_slice
 
     class semisphere(shape):
@@ -767,6 +769,7 @@ class shapes:
             top_slice_radius = np.sqrt(2) * (r_sphere + zo[0])
             bot_slice_radius = np.sqrt(2) * (r_sphere - zo[1])
             slice_origin = np.mean(template_bilayer.coords[:, 0:2], axis=0)
+            print ('Origin of the semisphere is {},{}'.format(*slice_origin))
             # calculate slice indices
             bool_in_top_slice = template_bilayer.circular_slice(slice_origin, top_slice_radius, exclude_radius=r_hole)
             bool_in_bot_slice = template_bilayer.circular_slice(slice_origin, bot_slice_radius, exclude_radius=r_hole)
@@ -781,10 +784,11 @@ class shapes:
             # merge and transform slices
             top_leaflet.append(bot_leaflet)
 
-            if print_intermediates:
-                top_leaflet.write_coordinates(print_intermediates, position=False)
-
             top_leaflet.spherical_transform(r_sphere)
+
+            if print_intermediates:
+                top_leaflet.write_coordinates('semisphere.pdb', position=False)
+
             return top_leaflet
 
     class cylinder(shape):
@@ -822,10 +826,12 @@ class shapes:
             top_leaflet.scale_coordinates_rectangular([1, cylinder_slice_length / outer_slice_length])
             bot_leaflet.scale_coordinates_rectangular([1, cylinder_slice_length / inner_slice_length])
             top_leaflet.append(bot_leaflet)
-            if print_intermediates:
-                top_leaflet.write_coordinates(print_intermediates, position=None)
 
             top_leaflet.cylindrical_transform(r_cylinder)
+
+            if print_intermediates:
+                top_leaflet.write_coordinates('cylinder.pdb', position=None)
+
             return top_leaflet
 
     class inner_quarter_torus(shape):
@@ -853,6 +859,7 @@ class shapes:
             outer_slice_max = np.sqrt(slice_min ** 2 + np.pi * outer_r_tube * r_torus - 2 * (outer_r_tube) ** 2)
 
             slice_origin = np.mean(template_bilayer.coords, axis=0)[0:2]
+            print ('Origin of the inner_quarter_torus is {},{}'.format(*slice_origin))
             # calculate slice indices
             bool_in_top_slice = template_bilayer.circular_slice(slice_origin, outer_slice_max, exclude_radius=slice_min)
             bool_in_bot_slice = template_bilayer.circular_slice(slice_origin, inner_slice_max, exclude_radius=slice_min)
@@ -869,6 +876,8 @@ class shapes:
             # for outer, take circle larger than size of torus including everything,
             # then exclude up to r_torus
             top_leaflet.inner_toroidal_transform(r_torus, r_tube)
+            if print_intermediates:
+                top_leaflet.write_coordinates('inner_quarter_torus.pdb', position=None)
 
             return top_leaflet
 
@@ -927,8 +936,8 @@ class shapes:
             return np.array([2 * (r_sphere + buff)] * 3)
 
         @staticmethod
-        def gen_shape(template_bilayer, zo, r_sphere, n_holes=0):
-            top_half = shapes.semisphere.gen_shape(template_bilayer, zo, r_sphere, False)
+        def gen_shape(template_bilayer, zo, r_sphere, n_holes=0,print_intermediates=False):
+            top_half = shapes.semisphere.gen_shape(template_bilayer, zo, r_sphere, print_intermediates=print_intermediates)
             bot_half = deepcopy(top_half)
             bot_half.rotate([180, 0, 0])
             top_half.append(bot_half, preserve_leaflets=True)
@@ -944,17 +953,17 @@ class shapes:
             return np.array([2 * (buff + r_torus + r_tube) ] * 2 + [2 * (r_tube + buff)])
 
         @staticmethod
-        def gen_shape(template_bilayer, zo, r_torus, r_tube, completeness=0.5):
+        def gen_shape(template_bilayer, zo, r_torus, r_tube, completeness=0.5, print_intermediates=False):
 
             if r_tube >= r_torus:
                 raise UserWarning("r_torus should be less than r_tube for a ring torus")
 
-            inside_top_quarter = shapes.inner_quarter_torus.gen_shape(template_bilayer, zo, r_torus, r_tube)
+            inside_top_quarter = shapes.inner_quarter_torus.gen_shape(template_bilayer, zo, r_torus, r_tube, print_intermediates=print_intermediates)
             inside_bot_quarter = deepcopy(inside_top_quarter)
             inside_bot_quarter.rotate([180, 0, 0])
             inside_top_quarter.append(inside_bot_quarter)
 
-            outside_top_quarter = shapes.outer_quarter_torus.gen_shape(template_bilayer, zo, r_torus, r_tube)
+            outside_top_quarter = shapes.outer_quarter_torus.gen_shape(template_bilayer, zo, r_torus, r_tube, print_intermediates=print_intermediates)
             outside_bot_quarter = deepcopy(outside_top_quarter)
             outside_bot_quarter.rotate([180, 0, 0])
 
@@ -975,14 +984,14 @@ class shapes:
             return np.array([l_cylinder, 2 * (r_cylinder + r_junction) + l_flat, r_cylinder + r_junction + buff])
 
         @staticmethod
-        def gen_shape(template_bilayer, zo, r_cylinder, l_cylinder, r_junction, l_flat):
-            semicyl   = shapes.cylinder.gen_shape(template_bilayer, zo, r_cylinder, l_cylinder, completeness=0.5)
+        def gen_shape(template_bilayer, zo, r_cylinder, l_cylinder, r_junction, l_flat, print_intermediates=False):
+            semicyl   = shapes.cylinder.gen_shape(template_bilayer, zo, r_cylinder, l_cylinder, completeness=0.5, print_intermediates=print_intermediates)
 
             template_2 = deepcopy(template_bilayer)
             template_2.rotate([180, 0, 0])     # junctions show inner leaflet to top, so reverse coordinates
             template_2.metadata.leaflets = 1 - template_2.metadata.leaflets   # fix leaflet description
 
-            junction  = shapes.cylinder.gen_shape(template_2, zo, r_junction, l_cylinder, completeness=0.25)
+            junction  = shapes.cylinder.gen_shape(template_2, zo, r_junction, l_cylinder, completeness=0.25, print_intermediates=print_intermediates)
             junction.metadata.leaflets = 1 - junction.metadata.leaflets   # now reverse leaflets again to match "top"
             junction2 = deepcopy(junction)
 
@@ -994,7 +1003,7 @@ class shapes:
             junction2.rotate([225, 0, 0])
             junction2.translate([0, r_junction + r_cylinder, 0])
 
-            flat_slice = shapes.flat_bilayer.gen_shape(template_bilayer, zo, l_cylinder, l_flat)
+            flat_slice = shapes.flat_bilayer.gen_shape(template_bilayer, zo, l_cylinder, l_flat, print_intermediates=print_intermediates)
             flat_slice.translate( [0, r_junction + r_cylinder + (l_flat / 2), - r_junction])
 
             semicyl.append(junction)
@@ -1015,23 +1024,26 @@ class shapes:
             return np.array([l_flat, l_flat, r_sphere + r_junction + buff])
 
         @staticmethod
-        def gen_shape(template_bilayer, zo, r_sphere, r_junction, l_flat):
+        def gen_shape(template_bilayer, zo, r_sphere, r_junction, l_flat, print_intermediates=False):
+
 
             if (r_sphere + r_junction) > (l_flat / 2):
                 raise UserWarning("Flat region too small for sphere/junction radii")
 
-            semisph   = shapes.semisphere.gen_shape(template_bilayer, zo, r_sphere)
-
+            print('\nCutting semisphere...')
+            semisph   = shapes.semisphere.gen_shape(template_bilayer, zo, r_sphere, print_intermediates=print_intermediates)
             template_2 = deepcopy(template_bilayer)
             template_2.rotate([180, 0, 0])     # junctions show inner leaflet to top, so reverse coordinates
             template_2.metadata.leaflets = 1 - template_2.metadata.leaflets   # fix leaflet description
 
-            junction  = shapes.inner_quarter_torus.gen_shape(template_2, zo, r_sphere + r_junction, r_junction,)
+            print('Cutting junction (neck)...')
+            junction  = shapes.inner_quarter_torus.gen_shape(template_2, zo, r_sphere + r_junction, r_junction, print_intermediates=print_intermediates)
             junction.metadata.leaflets = 1 - junction.metadata.leaflets   # now reverse leaflets again to match "top"
 
             junction.rotate([180, 0, 0])
 
-            flat_slice = shapes.flat_bilayer.gen_shape(template_bilayer, zo, l_flat, l_flat, r_sphere + r_junction)
+            print('Cutting flat region...')
+            flat_slice = shapes.flat_bilayer.gen_shape(template_bilayer, zo, l_flat, l_flat, r_sphere + r_junction, print_intermediates=print_intermediates)
             flat_slice.translate([0, 0, -r_junction])
 
             semisph.append(junction)
@@ -1050,18 +1062,18 @@ class shapes:
         def final_dimensions(r_cylinder, l_cylinder, r_junction, l_flat, buff=50):
             return np.array([l_flat, l_flat, l_cylinder + 2 * (r_junction + buff)])
 
-        def gen_shape(template_bilayer, zo, r_cylinder, l_cylinder, r_junction, l_flat):
+        def gen_shape(template_bilayer, zo, r_cylinder, l_cylinder, r_junction, l_flat, print_intermediates=False):
             ''' "Top" leaflet will be IMS facing leaflet, so: TOP of flat region (no change), INSIDE of cylinder (flip),
                 and OUTSIDE of torus (no change)
             '''
             if (r_cylinder + r_junction) > (l_flat / 2):
                 raise UserWarning("Flat region too small for cylinder/junction radii")
 
-            junction = shapes.inner_quarter_torus.gen_shape(template_bilayer, zo, r_cylinder + r_junction, r_junction)
+            junction = shapes.inner_quarter_torus.gen_shape(template_bilayer, zo, r_cylinder + r_junction, r_junction, print_intermediates=print_intermediates)
             junction.translate([0, 0, l_cylinder / 2])
             junction_2 = deepcopy(junction)
             junction_2.rotate( [180, 0, 0])
-            flat_bilayer = shapes.flat_bilayer.gen_shape(template_bilayer, zo, l_flat, l_flat, r_cylinder + r_junction)
+            flat_bilayer = shapes.flat_bilayer.gen_shape(template_bilayer, zo, l_flat, l_flat, r_cylinder + r_junction, print_intermediates=print_intermediates)
 
             flat_bilayer.translate([0, 0, (l_cylinder / 2) + r_junction])
             flat_bilayer_2 = deepcopy(flat_bilayer)
@@ -1070,7 +1082,7 @@ class shapes:
             template_2 = deepcopy(template_bilayer)
             template_2.rotate([180, 0, 0])    # flip
             template_2.metadata.leaflets = 1 - template_2.metadata.leaflets
-            cyl = shapes.cylinder.gen_shape(template_2, zo, r_cylinder, l_cylinder, completeness=1)
+            cyl = shapes.cylinder.gen_shape(template_2, zo, r_cylinder, l_cylinder, completeness=1, print_intermediates=print_intermediates)
             cyl.metadata.leaflets = 1 - cyl.metadata.leaflets
             cyl.rotate([0, 90, 0])
 
@@ -1092,10 +1104,10 @@ class shapes:
             return np.array([l_cylinder + 2 * (r_cylinder + buff), 2 * (r_cylinder + buff), 2 * (r_cylinder + buff) ])
 
         @staticmethod
-        def gen_shape(template_bilayer, zo, r_cylinder, l_cylinder):
+        def gen_shape(template_bilayer, zo, r_cylinder, l_cylinder, print_intermediates=False):
             ''' Two semispheres connected by a cylinder'''
-            cyl = shapes.cylinder.gen_shape(template_bilayer, zo, r_cylinder, l_cylinder, completeness=1)
-            semisphere1 = shapes.semisphere.gen_shape(template_bilayer, zo, r_cylinder)
+            cyl = shapes.cylinder.gen_shape(template_bilayer, zo, r_cylinder, l_cylinder, completeness=1, print_intermediates=print_intermediates)
+            semisphere1 = shapes.semisphere.gen_shape(template_bilayer, zo, r_cylinder, print_intermediates=print_intermediates)
             semisphere2 = deepcopy(semisphere1)
             semisphere1.rotate([0, 90, 0])
             semisphere2.rotate([0, 270, 0])
@@ -1120,13 +1132,13 @@ class shapes:
             return np.array([xdim, yzdim, yzdim])
 
         @staticmethod
-        def gen_shape(template_bilayer, zo, r_sphere, r_cylinder, l_cylinder, r_junction):
-            cyl = shapes.cylinder.gen_shape(template_bilayer, zo, r_cylinder, l_cylinder, completeness=1)
-            sph1 = shapes.semisphere.gen_shape(template_bilayer, zo, r_sphere, r_hole=r_cylinder + r_junction)
+        def gen_shape(template_bilayer, zo, r_sphere, r_cylinder, l_cylinder, r_junction, print_intermediates=False):
+            cyl = shapes.cylinder.gen_shape(template_bilayer, zo, r_cylinder, l_cylinder, completeness=1, print_intermediates=print_intermediates)
+            sph1 = shapes.semisphere.gen_shape(template_bilayer, zo, r_sphere, r_hole=r_cylinder + r_junction, print_intermediates=print_intermediates)
             sph2 = deepcopy(sph1)
             sph1.rotate([0,  90, 0])
             sph2.rotate([0, 270, 0])
-            junc1 = shapes.inner_quarter_torus.gen_shape(template_bilayer, zo, r_cylinder + r_junction, r_junction)
+            junc1 = shapes.inner_quarter_torus.gen_shape(template_bilayer, zo, r_cylinder + r_junction, r_junction, print_intermediates=print_intermediates)
             junc2 = deepcopy(junc1)
             junc1.rotate([0,  90, 0])
             junc2.rotate([0, 270, 0])
@@ -1153,14 +1165,14 @@ class shapes:
             return np.array([l_buckle, 4 * r_buckle, 2 * (r_buckle + buff)])
 
         @staticmethod
-        def gen_shape(template_bilayer, zo, r_buckle, l_buckle):
-            semicyl   = shapes.cylinder.gen_shape(template_bilayer, zo, r_buckle, l_buckle, completeness=0.5)
+        def gen_shape(template_bilayer, zo, r_buckle, l_buckle, print_intermediates=False):
+            semicyl   = shapes.cylinder.gen_shape(template_bilayer, zo, r_buckle, l_buckle, completeness=0.5, print_intermediates=print_intermediates)
 
             template_2 = deepcopy(template_bilayer)
             template_2.rotate([180, 0, 0])     # junctions show inner leaflet to top, so reverse coordinates
             template_2.metadata.leaflets = 1 - template_2.metadata.leaflets   # fix leaflet description
 
-            junction  = shapes.cylinder.gen_shape(template_2, zo, r_buckle, l_buckle, completeness=0.25)
+            junction  = shapes.cylinder.gen_shape(template_2, zo, r_buckle, l_buckle, completeness=0.25, print_intermediates=print_intermediates)
             junction.metadata.leaflets = 1 - junction.metadata.leaflets   # now reverse leaflets again to match "top"
             junction2 = deepcopy(junction)
 
@@ -1223,6 +1235,8 @@ def parse_command_lines():
     optional_arguments.add_argument('--ignore_resnames', metavar='', help='colon separated list of resnames to ignore' +
                                     'when reading in a structure file, for example to exclude water', default=(),
                                     nargs="*")
+
+    optional_arguments.add_argument('--print_intermediates', action='store_true')  # on/off flag
 
     dummy_arguments.add_argument('--gen_dummy_particles', action='store_true',
                                  help='Add a grid of dummy particles surrounding bilayer', default=False )
@@ -1451,6 +1465,7 @@ def main():
 
     mult_factor = (np.ceil(shape_tobuild.dimension_requirements(**geometric_args) /
                            template_bilayer.boxdims[0:2]).astype(int))
+    print('Duplicating bilayer by {},{}'.format(*mult_factor))
     template_bilayer.duplicate_laterally(*mult_factor)
 
     # make shape
@@ -1458,7 +1473,7 @@ def main():
     sys.stdout.flush()
     t = time()
     # construct the shape
-    shape = shape_tobuild.gen_shape(template_bilayer, zo, **geometric_args)
+    shape = shape_tobuild.gen_shape(template_bilayer, zo, **geometric_args, print_intermediates=args.print_intermediates)
     shape.boxdims = shape_tobuild.final_dimensions(**geometric_args)
     print('Finished - time elapsed = {:.1f} seconds'.format(time() - t))
 
@@ -1474,7 +1489,7 @@ def main():
         mult_factor = (np.ceil( shape_tobuild.dimension_requirements(**geometric_args) /
                                 dummy_template.boxdims[0:2]).astype(int))
         dummy_template.duplicate_laterally(*mult_factor)
-        dummy_shape = shape_tobuild.gen_shape(dummy_template, 2 * [args.dummy_grid_thickness / 2], **geometric_args)
+        dummy_shape = shape_tobuild.gen_shape(dummy_template, 2 * [args.dummy_grid_thickness / 2], **geometric_args,print_intermediates=args.print_intermediates)
         shape.append(dummy_shape)
     else:
         dummy_name = ''
